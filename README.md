@@ -5,6 +5,8 @@ run unattended — e.g. while you sleep — so a freshly-reset **session (5-hour
 limit gets *used* instead of sitting idle. Queue prompts, pick the account, and
 fire them at a set time or **right when the limit resets**.
 
+![Claude Tasker main window](docs/main.png)
+
 For each account it sets `CLAUDE_CONFIG_DIR`, runs `claude -p` headless, and
 logs every run. It shows live **session (5h)** and **weekly (7d)** usage with
 reset countdowns, read from the same OAuth endpoints Claude Code itself uses —
@@ -51,6 +53,9 @@ inside it.
 
 1. **Add a task** — name, account, working directory, the prompt (your heavy
    work), a permission mode, optional model + effort, and a schedule.
+
+   ![New task dialog](docs/new-task.png)
+
 2. **Arm** the app (top-right toggle). Tasks fire **only** while **ARMED**, so
    adding/editing while *paused* can never start anything by accident.
 3. The scheduler checks every few seconds and starts due tasks, respecting
@@ -101,6 +106,8 @@ level (`low`…`max`, passed as `--effort`) per task.
 Manage accounts in **Settings**: each has a **label** (the CLI name, e.g.
 `claude1`) and a **config dir** (the folder holding that login's
 `.credentials.json`). Add with the inline form, remove with the **✕**.
+
+![Settings dialog](docs/settings.png)
 
 ### Running several Claude accounts on one computer
 
@@ -218,6 +225,8 @@ Claude Code CLI** без нагляду — наприклад поки ви с�
 **сесійного (5г)** і **тижневого (7д)** лімітів зі зворотним відліком до ресету,
 читаючи ті самі OAuth-ендпоінти, що й Claude Code — тож працює **самостійно**,
 без жодних додаткових програм.
+
+![Головне вікно Claude Tasker](docs/main.png)
 
 > **Приватність:** усе працює локально. Tasker звертається лише до API Anthropic
 > із вашим локальним логіном. Жодні дані нікуди більше не передаються; у

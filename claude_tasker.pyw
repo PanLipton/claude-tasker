@@ -1027,19 +1027,41 @@ class App:
         self.usage_frame.pack(fill="x", padx=14, pady=(4, 8))
         self.usage_inner = tk.Frame(self.usage_frame, bg=C_PANEL)
         self.usage_inner.pack(fill="x", padx=10, pady=8)
+        self._usage_sig = None        # rebuild columns only when accounts change
+        self._usage_cells = {}        # label -> {"email","session","weekly"} labels
 
-    def _render_usage(self):
+    def _sync_usage(self):
+        """Update the usage bar in place. Columns are rebuilt only when the set
+        of accounts changes — the per-second tick just edits label text/colour,
+        so the panel never flickers."""
+        accs = self.engine.account_labels()
+        sig = tuple(accs)
+        if sig != self._usage_sig:
+            self._build_usage_cols(accs)
+            self._usage_sig = sig
+        for label in accs:
+            cells = self._usage_cells.get(label)
+            if not cells:
+                continue
+            u = self.engine.usage.get(label, {})
+            email = u.get("email") or u.get("error") or ""
+            new_email = ("  " + email) if email else ""
+            if cells["email"].cget("text") != new_email:
+                cells["email"].config(text=new_email)
+            st_txt, st_col = self._metric_text("session", u.get("five") or {})
+            wk_txt, wk_col = self._metric_text("weekly", u.get("seven") or {})
+            cells["session"].config(text=st_txt, fg=st_col)
+            cells["weekly"].config(text=wk_txt, fg=wk_col)
+
+    def _build_usage_cols(self, accs):
         for w in self.usage_inner.winfo_children():
             w.destroy()
-        accs = self.engine.account_labels()
+        self._usage_cells = {}
         if not accs:
             tk.Label(self.usage_inner, text="No accounts configured.", bg=C_PANEL,
                      fg=C_MUTED, font=(FONT, 9)).pack(side="left")
             return
         for i, label in enumerate(accs):
-            u = self.engine.usage.get(label, {})
-            five = u.get("five") or {}
-            seven = u.get("seven") or {}
             accent = ACCENTS[i % len(ACCENTS)]
             col = tk.Frame(self.usage_inner, bg=C_PANEL)
             col.pack(side="left", padx=(0, 28))
@@ -1047,25 +1069,24 @@ class App:
             tk.Label(head, text="●", bg=C_PANEL, fg=accent, font=(FONT, 9)).pack(side="left")
             tk.Label(head, text=" %s" % label, bg=C_PANEL, fg=C_TEXT,
                      font=(FONT, 9, "bold")).pack(side="left")
-            email = u.get("email") or ""
-            if email:
-                tk.Label(head, text="  %s" % email, bg=C_PANEL, fg=C_FAINT,
-                         font=(FONT, 8)).pack(side="left")
-            self._usage_metric(col, "session", five)
-            self._usage_metric(col, "weekly", seven)
+            email_lbl = tk.Label(head, text="", bg=C_PANEL, fg=C_FAINT, font=(FONT, 8))
+            email_lbl.pack(side="left")
+            sess = tk.Label(col, text="  session: —", bg=C_PANEL, fg=C_FAINT,
+                            font=(FONT, 8), anchor="w")
+            sess.pack(anchor="w")
+            week = tk.Label(col, text="  weekly: —", bg=C_PANEL, fg=C_FAINT,
+                            font=(FONT, 8), anchor="w")
+            week.pack(anchor="w")
+            self._usage_cells[label] = {"email": email_lbl, "session": sess, "weekly": week}
 
-    def _usage_metric(self, parent, name, data):
+    def _metric_text(self, name, data):
         util = data.get("util")
         reset = data.get("reset")
         if util is None:
-            txt = "%s: —" % name
-            color = C_FAINT
-        else:
-            pct = int(round(util))
-            color = C_CRIT if pct >= 85 else C_WARN if pct >= 60 else C_OK
-            txt = "%s %d%% · resets %s" % (name, pct, fmt_countdown(reset))
-        row = tk.Frame(parent, bg=C_PANEL); row.pack(anchor="w")
-        tk.Label(row, text="  " + txt, bg=C_PANEL, fg=color, font=(FONT, 8)).pack(side="left")
+            return "  %s: —" % name, C_FAINT
+        pct = int(round(util))
+        color = C_CRIT if pct >= 85 else C_WARN if pct >= 60 else C_OK
+        return "  %s %d%% · resets %s" % (name, pct, fmt_countdown(reset)), color
 
     # -- task table ---------------------------------------------------------
     def _build_table(self):
@@ -1188,7 +1209,7 @@ class App:
 
     # -- periodic refresh ---------------------------------------------------
     def _tick(self):
-        self._render_usage()
+        self._sync_usage()
         self._refresh_table()
         self.root.after(1000, self._tick)
 
