@@ -7,3 +7,8 @@ logs/
 __pycache__/
 *.pyc
 *.tmp
+
+# Test / coverage artifacts
+.coverage
+.pytest_cache/
+htmlcov/
