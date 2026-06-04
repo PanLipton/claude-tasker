@@ -1,0 +1,9 @@
+# Personal / generated at runtime — never commit
+settings.json
+tasks.json
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.tmp
