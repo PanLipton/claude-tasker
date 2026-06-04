@@ -462,6 +462,7 @@ class Engine:
             t["ended_at"] = None
             t["exit_code"] = None
             t["not_before"] = None
+            t["target_reset"] = None   # re-latch the next reset on the next tick
         self.save_tasks()
 
     # -- scheduling ---------------------------------------------------------
@@ -475,7 +476,12 @@ class Engine:
         elif st == "at":
             base = task.get("at")
         elif st == "session_reset":
-            base = self.session_reset_epoch(task.get("reset_account"))
+            # `target_reset` is the reset epoch latched by _latch_resets when the
+            # task first becomes active. We schedule against that fixed point, not
+            # the live value, because the live `resets_at` always points at the
+            # *next* reset and jumps ~5h forward the instant a window resets — so
+            # `live + offset` would forever sit in the future and never fire.
+            base = task.get("target_reset") or self.session_reset_epoch(task.get("reset_account"))
             if base:
                 base = base + offset
         elif st == "after_prev":
@@ -530,8 +536,32 @@ class Engine:
                 self._tick()
             self._stop.wait(POLL_SECONDS)
 
+    def _latch_resets(self):
+        """Freeze the upcoming 5h-reset epoch for each active session_reset task.
+
+        The OAuth `resets_at` always reports the *next* reset, so it sits in the
+        future and jumps ~5h forward the moment a window resets. Scheduling
+        against the live value therefore never fires. We capture the first known
+        upcoming reset into `target_reset` and fire relative to that fixed point;
+        it is cleared whenever the task is re-queued so the next cycle re-latches.
+        Runtime-only (not persisted): on restart we re-latch to the then-current
+        upcoming reset rather than firing against a stale, missed boundary.
+        """
+        for t in self._snapshot():
+            if t.get("sched_type") != "session_reset":
+                continue
+            if t.get("status") not in ("pending", "scheduled"):
+                continue
+            if t.get("target_reset"):
+                continue
+            r = self.session_reset_epoch(t.get("reset_account"))
+            if r:
+                with self.lock:
+                    t["target_reset"] = r
+
     def _tick(self):
         now = time.time()
+        self._latch_resets()
         running = sum(1 for t in self._snapshot() if t.get("status") == "running")
         max_conc = max(1, int(self.settings.get("max_concurrent", 1)))
         ready = []
@@ -657,6 +687,7 @@ class Engine:
         with self.lock:
             task["status"] = "scheduled"
             task["not_before"] = time.time() + (hours * 3600 if hours > 0 else 0)
+            task["target_reset"] = None   # re-latch against the next reset
             if task.get("sched_type") == "at" and hours > 0 and task.get("at"):
                 task["at"] = task["at"] + hours * 3600
 
@@ -935,6 +966,7 @@ class TaskDialog:
         elif st == "session_reset":
             t["reset_account"] = self.v_reset_acc.get()
             t["offset_min"] = self._num(self.e_offset.get(), 2)
+            t["target_reset"] = None   # re-latch on the next tick after an edit
         elif st == "after_prev":
             t["offset_min"] = self._num(self.e_offset.get(), 0)
         # re-arm an edited finished task
@@ -1456,23 +1488,67 @@ class SettingsDialog:
         self.win.destroy()
 
 
-def _bind_select_all(root):
-    """Make Ctrl+A select all in every Entry/Text (tk's default is 'go to
-    line start'). Applied at the class level so it covers dialogs too."""
-    def entry_all(e):
-        e.widget.select_range(0, "end")
-        e.widget.icursor("end")
+def _bind_clipboard(root):
+    """Make Ctrl+A/C/V/X work in every Entry/Text widget, for any keyboard
+    layout. Two problems are fixed here, both applied at the class level so
+    they also cover dialogs:
+
+    1. Ctrl+A: tk's default is 'go to line start', so we rebind it to
+       select-all.
+    2. Non-Latin layouts: tk's clipboard bindings match by keysym
+       (``<Control-v>`` etc.), which silently fail under a Ukrainian/Russian/
+       other Cyrillic layout because the physical V key then emits a Cyrillic
+       keysym. We add a ``<Control-KeyPress>`` handler that dispatches on the
+       layout-independent physical keycode instead.
+    """
+    def entry_all(w):
+        w.select_range(0, "end")
+        w.icursor("end")
+
+    def text_all(w):
+        w.tag_add("sel", "1.0", "end-1c")
+        w.mark_set("insert", "end-1c")
+
+    # Keep the explicit Latin-keysym Ctrl+A binding so it overrides tk's
+    # default 'go to line start' on a normal English layout (a more specific
+    # pattern than the generic <Control-KeyPress> below, so it wins there).
+    def entry_all_evt(e):
+        entry_all(e.widget)
         return "break"
 
-    def text_all(e):
-        e.widget.tag_add("sel", "1.0", "end-1c")
-        e.widget.mark_set("insert", "end-1c")
+    def text_all_evt(e):
+        text_all(e.widget)
         return "break"
 
     for key in ("<Control-a>", "<Control-A>"):
-        root.bind_class("Entry", key, entry_all)
-        root.bind_class("TEntry", key, entry_all)
-        root.bind_class("Text", key, text_all)
+        root.bind_class("Entry", key, entry_all_evt)
+        root.bind_class("TEntry", key, entry_all_evt)
+        root.bind_class("Text", key, text_all_evt)
+
+    # Windows virtual-key codes for the physical A / C / V / X keys. These are
+    # independent of the active keyboard layout, so they fire even when the
+    # keysym-based bindings above (and tk's own <Control-v> etc.) do not.
+    KC_A, KC_C, KC_V, KC_X = 65, 67, 86, 88
+
+    def on_ctrl_key(e):
+        w = e.widget
+        kc = e.keycode
+        if kc == KC_A:
+            (text_all if isinstance(w, tk.Text) else entry_all)(w)
+            return "break"
+        if kc == KC_C:
+            w.event_generate("<<Copy>>")
+            return "break"
+        if kc == KC_V:
+            w.event_generate("<<Paste>>")
+            return "break"
+        if kc == KC_X:
+            w.event_generate("<<Cut>>")
+            return "break"
+        return None
+
+    for cls in ("Entry", "TEntry", "Text"):
+        root.bind_class(cls, "<Control-KeyPress>", on_ctrl_key)
 
 
 def main():
@@ -1482,7 +1558,7 @@ def main():
     except Exception:
         pass
     root = tk.Tk()
-    _bind_select_all(root)
+    _bind_clipboard(root)
     App(root)
     root.mainloop()
 

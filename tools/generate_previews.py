@@ -169,7 +169,7 @@ def grab(win, name):
 import tkinter as tk
 
 root = tk.Tk()
-m._bind_select_all(root)
+m._bind_clipboard(root)
 app = m.App(root)
 app.engine._stop.set()                 # stop the scheduler thread
 app.engine._start = lambda t: None     # belt-and-suspenders: never launch tasks
