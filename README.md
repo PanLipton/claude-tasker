@@ -86,8 +86,8 @@ Unattended agent work can't stop to ask, so:
   tools (likely to hang on shell commands; not ideal unattended).
 - **Default (ask)** — interactive; for unattended runs it just hangs. Avoid.
 
-You can also set an optional **model** (`opus`/`sonnet`/`haiku`) and **effort**
-level (`low`…`max`, passed as `--effort`) per task.
+You can also set an optional **model** (`opus`/`sonnet`/`haiku`/`fable`) and **effort**
+level (`low`…`ultra`, passed as `--effort`) per task.
 
 ### Buttons
 
@@ -289,8 +289,8 @@ Tasker сам знаходить каталоги конфігурації Claud
   інших інструментах (ймовірно зависне на shell-командах).
 - **Default (ask)** — інтерактивний; без нагляду просто зависне. Уникайте.
 
-Також можна задати **модель** (`opus`/`sonnet`/`haiku`) та рівень **effort**
-(`low`…`max`, передається як `--effort`) на кожну задачу.
+Також можна задати **модель** (`opus`/`sonnet`/`haiku`/`fable`) та рівень **effort**
+(`low`…`ultra`, передається як `--effort`) на кожну задачу.
 
 ### Кнопки
 

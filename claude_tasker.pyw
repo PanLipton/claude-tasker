@@ -89,8 +89,8 @@ PERM_MODES = [
     ("Default (ask — not for unattended)", "default"),
 ]
 PERM_LABEL = {v: k for k, v in PERM_MODES}
-MODELS = ["(default)", "opus", "sonnet", "haiku"]
-EFFORT = ["(default)", "low", "medium", "high", "xhigh", "max"]
+MODELS = ["(default)", "opus", "sonnet", "haiku", "fable"]
+EFFORT = ["(default)", "low", "medium", "high", "xhigh", "max", "ultra"]
 
 SCHED_TYPES = [
     ("As soon as armed", "now"),
